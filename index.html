@@ -1,13 +1,51 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" data-last="ready">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HDR-gainmap toys</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VNS · wagon engine laboratory</title>
+<style>
+:root { --vns-bg:#10131a; --vns-fg:#f4f1e8; color-scheme:dark }
+* { box-sizing:border-box }
+html { background:var(--vns-bg); color:var(--vns-fg); font:16px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace }
+body { margin:0; overflow-x:hidden }
+#story { position:relative; isolation:isolate; min-height:100vh }
+.story-line, .chapter-title, .chapter-note { position:relative; z-index:2; width:min(42rem,calc(100% - 3rem)); margin-left:clamp(1.5rem,8vw,8rem); text-shadow:0 1px 8px #000,0 0 2px #000 }
+.chapter { padding-top:1px }
+.chapter-title { margin-top:0; padding-top:3rem; font:700 clamp(2rem,8vw,7rem)/1 sans-serif }
+.chapter-note { padding:.5rem 0 1rem; color:#fff }
+.bg,.bgwindow { position:fixed; inset:0 auto auto 0; width:var(--vns-w,512px); height:var(--vns-h,512px); z-index:0; pointer-events:none; background-repeat:no-repeat; background-position:center; will-change:transform; contain:layout paint }
+.bg[data-mode="cover"] { background-size:cover }
+.bg[data-mode="contain"] { background-size:contain }
+.bg[data-mode="fixed"] { background-size:100% 100% }
+.bg[data-mode="original"],.bg[data-mode="auto"] { background-size:auto }
+.vns-anchor { display:block; width:0; height:0; margin:0; padding:0 }
+.vns-disabled .bg,.vns-disabled .bgwindow { position:absolute }
+.controls { position:fixed; z-index:20; left:1rem; bottom:1rem; display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; max-width:calc(100vw - 2rem); padding:.65rem .8rem; border:1px solid #ffffff42; border-radius:.6rem; background:#080b10e8; box-shadow:0 8px 30px #0008; font:12px/1.2 sans-serif }
+.controls label { display:flex; gap:.3rem; align-items:center }
+.controls select,.controls button { font:inherit; color:#fff; border:1px solid #ffffff40; background:#252a33; border-radius:.3rem; padding:.3rem }
+.controls button { cursor:pointer }
+#diag { position:fixed; z-index:20; top:1rem; right:1rem; width:min(28rem,calc(100vw - 2rem)); white-space:pre; padding:.7rem; border:1px solid #ffffff35; border-radius:.5rem; background:#080b10df; color:#bfcaad; pointer-events:none; font:11px/1.45 ui-monospace,monospace }
+.legend { position:fixed; z-index:20; left:1rem; top:1rem; max-width:20rem; padding:.6rem; background:#080b10df; font:11px/1.4 sans-serif; border-radius:.4rem }
+.day .story-line,.day .chapter-title { text-shadow:0 1px 8px #fff,0 0 2px #fff }
+.fog .story-line { opacity:.82 }
+@media (max-width:700px) { .legend { display:none } #diag { font-size:9px; width:17rem } }
+</style>
 </head>
 <body>
-<div id="app">
-  <canvas id="c"></canvas>
-</div>
+<div class="legend"><b>Wagon test</b><br>Each translucent image is behind its chapter text. It rides to the top, parks, then the next wagon pushes it in the selected direction. “auto” tests an authored 6th image at its natural 360×220 size.</div>
+<main id="story"></main>
+<form class="controls" id="controls">
+<label>chapters <select id="count"><option>4</option><option selected>6</option><option>8</option></select></label>
+<label>gap <select id="gap"><option>tiny</option><option selected>mixed</option><option>huge</option></select></label>
+<label>size <select id="mode"><option>cover</option><option>contain</option><option>fixed</option><option>original</option><option selected>matrix</option></select></label>
+<label>exit <select id="direction"><option>top</option><option>left</option><option selected>right</option><option>bottom</option><option>matrix</option></select></label>
+<label><input id="enabled" type="checkbox" checked> engine</label>
+<button type="submit">regenerate</button>
+<button type="button" id="qa">QA all</button>
+</form>
+<output id="diag"></output>
+<script src="vns.js"></script>
+<script src="harness.js"></script>
 </body>
 </html>
