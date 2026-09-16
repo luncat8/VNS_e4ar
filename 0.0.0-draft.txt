@@ -1,0 +1,120 @@
+visual novella engine. event and scripts are executed while scroll text.
+
+0
+create good testing page that generate text and images, or gradients on the fly for you and for user to be able test all features.
+i prefer text to easy differ chapters or position but not lorumispum
+for example text R<br>R<br>R<br> after red image
+
+1
+background images
+
+2
+style transform
+
+3
+execute script by events
+Script event system — <script type="txt" event='view|parked|end|skip'> that fire when a section reaches specific state.
+
+
+Background-size modes — should support fixed size, original size, or stretched-to-screen (cover/contain/fixed).
+текст разного размера и разные фоновые картинки и разным растяжением ( фиксированного размера, оригинального размера, или растянуты на размер экрана)
+
+Free DOM placement — "any text and sections combinations with free placement of background-image and scripts in anywhere". Note: if this give big adventage we can set rule about strict SECTION tree without free text, but better do not force users and work in any case.
+
+example
+<section><h4 class="n">1</h4>
+<div class="bg" style="background-image: url('512.png');"></div>
+1<br>
+1<br>
+any text and sections combinations with free placement of background-image and scripts in anywhere
+1<br>
+<div class="bg" style="background-image: url('512.png');"></div>
+2<br>
+2<br>
+2<br>
+2<br>
+2<br>
+2<br>
+2<br>
+<div class="bg" data-dir="left" style="background-image: url(1024.png');"></div>
+3<br>
+3<br>
+3<br>
+<section><h2>3</h2><div class="bgwindow" style="background-image: url('3.png');">
+<script type="txt" event='view'>
+console.log("section view (bottom of screen)");
+<script>
+<script type="txt" event='center'>
+console.log("section reach center of screen");
+<script>
+<script type="txt" event='end'>
+console.log("section out of screen");
+<script>
+<script type="txt" event='skip'>
+console.log("section never was in view but scroll is after it, so user skip this topic and we do some default actions");
+<script>
+</div>
+3<br/>
+3<br/>
+</section>
+3<br>
+3<br>
+<div class="bg" style="background-image: .. just gradient..);"></div>
+4<br>
+4<br>
+
+....
+
+these example not must-to-implement but suggested. anyway i dont like to force users of engine (developers) to use strict tree of sections or other renpy-like approach. We do original engine.
+
+
+фоновые картинки могут быть фиксированного размера, оригинального размера, или растянуты на размер экрана. подумай где это лучше задавать. background-size? (cover, contain, fixed size, original)
+
+main concept:
+фоновые картинки движутся вместе с текстом как вагоны. как только текущий вагон доезжает до верха экрана (top: 0), он временно «становится на тормоз» пока в его нижнюю границу не толкает следующий
+
+
+example:
+<div class="bg" растянуть по размеру экрана style="background-image: url(512.png');"></div> 
+как только доходит до верха экрана - останавливается, занимая весь экран.
+Как только следующая пересекает нижнюю границу экрана, она «врезается» в предыдущий неё и начинает толкать вверх (или в сторону указанную в data-dir или иным удобным способом) выталкивая его с экрана
+
+
+Фоны не могут двигаться быстрее или медленнее, чем движется содержащий их текст в DOM-дереве (кроме случая data-dir других направлений).
+
+
+for fast test background behavior - better use gradients and some svg, but not pictures from internet.
+
+
+## Typical bugs:
+
+- фоновые картинки-вагоны не останавливаются у верха экрана. Должны останавливаться если снизу их не толкают другие картинки.
+- test same chapters size or too small so see scroll mechanics. But need generate different vertical text distance between backgrounds
+- картинки которые изначально не накладывались, при движении накладываются друг на друга. Typically should not overlap, but только двигают друг друга (за исключением иных направлений в dir).
+- glitches. картинки резко перемещаются или пропадают. Но должны двигаться плавно вслед за текстом или стоять прилипнув к верхнему краю экрана.
+- при движении снизу, начало картинки не совпадает с началом текста.  Должно совпадать 3.png в этом примере всегда движется вместе этой цифрой 3 являясь относительной ней неподвижным фоном пока не упрётся в верх экрана
+2<br>
+<div class="bg" style="background-image: url(3.png');"></div>
+3<br>
+- скрол в обратную сторону не работает. Нужно чтобы математика была полностью обратимой.
+- different background sizes cause overlap or miss parking bugs
+- backgrounds anchored to sections. But it should not. Author should be free to keep background across sections and introduce new at any time.
+
+## theme style change
+think about system as visual novella engine. styles appears in text and restyle menu, background, text. usually we add new style as data-bg=#abc or as data-style=class1
+but feel free to invent better that is easy to use and support.
+the main purpose - make background change while user scroll to chapter similar to sunset or opening door to light room. so it is not blink to eyes and also looks interactive.
+
+
+## code style
+
+const $ = id => document.getElementById(id);
+single tab indent
+think what is faster for big text
+some llm suggested img.style.transform = translate3d.
+think about lazy image loding. it should not cause scroll-related glitch if possible.
+
+Do not blind use coding-patterns. This is experimental new engine, but not renpy-clone.
+
+if some things are extremely difficult or not possible - skip or simplyfy/rethink alternate. we need flexible, robust, fast architecture. 
+
