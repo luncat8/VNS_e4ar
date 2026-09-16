@@ -2,12 +2,89 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HDR-gainmap toys</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VNS — visual novella scroll engine</title>
+<link rel="stylesheet" href="harness.css">
 </head>
 <body>
-<div id="app">
-  <canvas id="c"></canvas>
+
+<form id="gen" autocomplete="off" onsubmit="return false">
+	<fieldset>
+		<legend>generator</legend>
+		<label class="rowf">preset
+			<select id="preset">
+				<option>mixed</option><option>mono</option><option>tight</option><option>long</option><option>draft</option>
+			</select>
+		</label>
+		<label>chapters <output id="nO">6</output>
+			<input id="n" type="range" min="1" max="12" step="1">
+		</label>
+		<label class="rowf">length
+			<select id="len"><option>tiny</option><option>mono</option><option>huge</option></select>
+		</label>
+		<label class="rowf">text gap
+			<select id="gap"><option value="zero">zero</option><option value="same">same</option><option value="mixed">mixed</option><option value="huge">huge</option></select>
+		</label>
+	</fieldset>
+	<fieldset>
+		<legend>wagons</legend>
+		<label class="rowf">mode
+			<select id="mode"><option>mixed</option><option>cover</option><option>contain</option><option>fixed</option><option>auto</option></select>
+		</label>
+		<label class="rowf">size
+			<select id="size"><option>mixed</option><option>256</option><option>512</option><option>1024</option></select>
+		</label>
+		<label class="rowf">data-dir
+			<select id="dir"><option value="none">none</option><option value="mixed">mixed</option></select>
+		</label>
+		<label class="rowf">nesting
+			<select id="nest"><option>both</option><option>section</option><option>flat</option></select>
+		</label>
+		<label class="rowf"><input id="style" type="checkbox"> data-bg/fg/style</label>
+		<label class="rowf"><input id="events" type="checkbox"> script events</label>
+		<label class="rowf"><input id="stat" type="checkbox"> .bgwindow + data-static</label>
+		<label class="rowf"><input id="bad" type="checkbox"> broken script</label>
+	</fieldset>
+	<fieldset>
+		<legend>qa</legend>
+		<label class="rowf">engine
+			<select id="eng">
+				<option value="all">all</option><option value="nowagons">no wagons</option>
+				<option value="nomorph">no morph</option><option value="noevents">no events</option>
+				<option value="off">no engine</option>
+			</select>
+		</label>
+		<label class="rowf">chapter <input id="jump" type="number" value="1" min="1" max="12" style="width:44px"></label>
+		<label class="rowf">speed <output id="spd">6</output>
+			<input id="speed" type="range" min="1" max="60" step="1" value="6">
+		</label>
+		<label class="rowf"><input id="wire" type="checkbox"> wireframes (w)</label>
+		<div class="btns">
+			<button id="reg" type="button">regen (r)</button>
+			<button id="seed" type="button">new seed</button>
+			<button id="top" type="button">top (t)</button>
+			<button id="bot" type="button">bottom (b)</button>
+			<button id="prev" type="button">◂</button>
+			<button id="next" type="button">▸</button>
+			<button id="auto" type="button" data-on="0">autoscroll (space)</button>
+			<button id="qaBtn" type="button">QA all (q)</button>
+		</div>
+	</fieldset>
+</form>
+
+<div id="diag">
+	<pre id="dstats">…</pre>
+	<div id="menu"><b>VNS</b> · visual novella scroll engine — menu restyles with the page:
+		<code>data-last</code> = <span id="last">—</span></div>
+	<div id="qa"></div>
 </div>
+
+<div id="app"></div>
+<div id="rail" aria-hidden="true"></div>
+<div id="mark" aria-hidden="true">0</div>
+<div id="wires" aria-hidden="true"></div>
+
+<script src="vns.js"></script>
+<script src="harness.js"></script>
 </body>
 </html>

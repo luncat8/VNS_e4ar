@@ -1,0 +1,72 @@
+/* harness.css — look of the demo/QA page. The engine injects its own <style>;
+   nothing here is required by vns.js except #app{position:relative;z-index:1}
+   and keeping the page colour on <html> (a background on #app hides wagons). */
+
+*{box-sizing:border-box}
+html{background:var(--vns-bg,#f6f2ea);color:var(--vns-fg,#141210)}
+/* Deliberately no `transition` on background/color: the per-frame lerp IS the
+   smoothing, and a CSS transition on top would add lag and make reversibility
+   depend on time instead of scroll position. */
+body{margin:0;font:15px/26px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+#app{position:relative;z-index:1;max-width:54ch;margin:0 auto;padding:92px 16px 0}
+#app .ch{padding-top:26px}
+#app h4.n{margin:0;font-size:34px;line-height:40px;letter-spacing:-.02em}
+#app h4.n small{display:block;font:11px/16px inherit;opacity:.6;font-weight:400}
+#app .r{font:10px/16px inherit;font-style:normal;opacity:.4}
+#app .run{font-size:22px}
+#app .tail{height:100vh;display:grid;place-content:center;text-align:center;opacity:.5}
+
+/* in-flow fallback: what an author sees with the engine off (?engine=0) or on a
+   data-static / .bgwindow element */
+#app .bg,#app .bgwindow{display:block;min-height:44vh;margin:6px 0;background-position:50% 50%;background-repeat:no-repeat;
+	background-size:cover;border:1px solid #0002;border-radius:4px}
+.bgl{display:inline-block;margin:4px;padding:2px 6px;font:11px/16px ui-monospace,monospace;font-weight:700;
+	background:#000c;color:#fff;border-radius:3px}
+
+/* theme demo: the engine only toggles these names and sets --vns-bg/--vns-fg */
+html.dusk #app{filter:saturate(.86) brightness(.97)}
+html.night #app{filter:brightness(.9) contrast(1.08)}
+html.night #app h4.n{border-bottom:2px solid currentColor}
+html.fog #app{text-shadow:0 1px 0 var(--vns-bg)}
+html[data-last] #app h4.n::after{content:"";}
+
+/* panels */
+#gen,#diag{position:fixed;top:0;z-index:9;max-height:100vh;overflow:auto;padding:8px 10px;
+	background:#0c0c0ee8;color:#e9e6df;font:11px/15px ui-monospace,monospace;border:1px solid #ffffff22}
+#gen{left:0;width:322px;border-top:0;border-left:0;border-radius:0 0 10px 0}
+#diag{right:0;width:346px;border-top:0;border-right:0;border-radius:0 0 0 10px}
+#gen fieldset{border:0;margin:0 0 6px;padding:0;display:flex;flex-wrap:wrap;gap:6px 10px}
+#gen legend{padding:0;font-weight:700;text-transform:uppercase;letter-spacing:.08em;opacity:.55;font-size:9px}
+#gen label{display:flex;flex-direction:column;gap:1px;min-width:62px;flex:1 1 62px}
+#gen label.rowf{flex-direction:row;align-items:center;gap:4px;min-width:0}
+#gen select,#gen input[type=range]{width:100%;font:inherit;color:inherit;background:#1d1d20;border:1px solid #ffffff26;border-radius:4px;padding:1px 2px}
+#gen input[type=checkbox]{accent-color:#7ad06a;margin:0}
+#gen output{font-weight:700}
+#gen .btns{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+#gen button,#gen .btn{flex:1 1 auto;font:inherit;color:inherit;background:#26262b;border:1px solid #ffffff2e;
+	border-radius:4px;padding:3px 6px;cursor:pointer}
+#gen button:hover{background:#3a3a42}
+#gen button[data-on="1"]{background:#2f5d33;border-color:#7ad06a}
+#dstats{margin:0;white-space:pre-wrap;font:inherit}
+#qa{margin-top:6px;border-top:1px solid #ffffff1f;padding-top:4px;display:grid;gap:2px;cursor:pointer}
+#qa div{padding:1px 4px;border-radius:3px;background:#ffffff10}
+#qa .pass{color:#93e6a4}
+#qa .fail{color:#ffa49a;background:#7c1d1255}
+#qa .idle{opacity:.5;color:inherit}
+#qa small{display:block;opacity:.65;white-space:normal}
+#menu{margin-top:6px;padding:4px 6px;border:1px solid currentColor;border-radius:4px;
+	background:var(--vns-bg,#f6f2ea);color:var(--vns-fg,#141210)}
+#menu b{color:#e0452f}
+
+/* ruler + wireframes */
+#rail{position:fixed;left:0;top:0;bottom:0;width:30px;z-index:8;pointer-events:none;
+	background:repeating-linear-gradient(to bottom,#0005 0 1px,transparent 1px 100px)}
+#mark{position:fixed;left:0;top:0;z-index:8;padding:0 4px 1px 2px;font:10px/14px ui-monospace,monospace;
+	background:#000c;color:#fff;border-radius:0 0 4px 0;pointer-events:none}
+#wires{position:fixed;inset:0;z-index:7;pointer-events:none}
+.wbox{position:absolute;border:1px solid #00c8;outline:1px solid #fff4}
+.want{position:absolute;left:30px;right:0;height:0;border-top:1px dashed #fffc}
+.want b{position:absolute;right:2px;top:1px;padding:0 3px;font:9px/13px ui-monospace,monospace;background:#fffc;color:#000}
+
+@media (max-width:1100px){#gen,#diag{position:static;width:auto;max-height:none;border-radius:0}}
