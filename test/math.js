@@ -65,6 +65,35 @@ for (let s = 2999; s >= 0; s--) {
 	prevY = p[0];
 }
 
+// The anchorAlign QA's skip boundary, as a theorem: where every cushion
+// (gapNext - ext) is >= 0, a wagon with free > 0 rides 1:1 (pos === free) and
+// a wagon at free === 0 sits exactly at 0 (every wagon below it is still free,
+// so nothing can push it). That is why the probe may assert y==300 / y==0 for
+// non-skipped wagons — and why a failure there cannot be this math.
+{
+	let rideOk = true, parkOk = true;
+	for (let trial = 0; trial < 1500; trial++) {
+		const n = 1 + (Math.random() * 6 | 0);
+		const h = [], gap = [];
+		for (let i = 0; i < n; i++) { h.push(100 + Math.random() * 1000); gap.push(h[i] + Math.random() * 500); }
+		const y = [];
+		let acc = 0;
+		for (let i = 0; i < n; i++) { if (i) acc += gap[i - 1]; y.push(acc); }
+		for (const s of [0.5, 238, 300, 1000, 5000]) {
+			const p = run(y.map((v) => v - s), h);
+			for (let i = 0; i < n; i++) {
+				const f = y[i] - s;
+				if (f > 0 && Math.abs(p[i] - f) > 1e-9) rideOk = false;
+			}
+		}
+		for (let i = 0; i < n; i++) {
+			if (Math.abs(run(y.map((v) => v - y[i]), h)[i]) > 1e-9) parkOk = false;
+		}
+	}
+	ok('cushion >= 0 everywhere => free > 0 wagons ride 1:1', rideOk);
+	ok('cushion >= 0 everywhere => at free == 0 a wagon sits exactly at 0', parkOk);
+}
+
 // global invariants over a random-ish layout: continuous, monotone, reversible
 const ext = [512, 1024, 512, 256, 1024, 512];
 const ys = [300, 2400, 2450, 5000, 6200, 9999];
@@ -107,6 +136,9 @@ for (const [dir, name] of [[VNS.DIR_TOP, 'top'], [VNS.DIR_LEFT, 'left'], [VNS.DI
 	ok(name + ': pushed moves off screen', exit[0] !== 0 || exit[1] !== 0, exit);
 	ok(name + ': exit distance equals push distance', Math.abs(Math.max(Math.abs(exit[0]), Math.abs(exit[1]))) === 400, exit);
 	if (dir === VNS.DIR_LEFT || dir === VNS.DIR_RIGHT) ok(name + ': lateral exit stays parked on Y', exit[1] === 0, exit);
+	if (dir === VNS.DIR_LEFT || dir === VNS.DIR_RIGHT) {
+		near(name + ': full push maps onto the viewport edge', VNS.wagonLateral(exit[0], 400, 800), dir === VNS.DIR_LEFT ? -800 : 800, 1e-9);
+	}
 	let before = null, cont = true;
 	for (let t = 300; t >= -300; t--) {
 		VNS.wagonExit(t, dir, o);
@@ -141,6 +173,11 @@ VNS.mixColor4(m, two, 0, 1, 0.5);
 ok('mix is linear-light', m[0] > 170 && m[0] < 205, m.slice());
 VNS.mixColor4(m, two, 1, 1, 0.3);
 ok('mix same index copies', m[0] === 255 && m[1] === 255);
+
+near('lateral scale is identity at x=0', VNS.wagonLateral(0, 256, 800), 0, 1e-9);
+near('lateral scale maps -ext onto -span', VNS.wagonLateral(-256, 256, 800), -800, 1e-9);
+near('lateral scale maps +ext onto +span', VNS.wagonLateral(256, 256, 800), 800, 1e-9);
+near('lateral scale ignores a zero box', VNS.wagonLateral(-10, 0, 800), -10, 1e-9);
 
 // ------------------------------------------------------------------ easing
 
@@ -227,6 +264,21 @@ const NAMES = ['view', 'center', 'parked', 'end', 'skip'];
 	ok('bottom exit re-arms view', r.fired.filter((f) => f[0] === '0').length === 2, r.fired);
 	ok('bottom exit re-arms center', r.fired.filter((f) => f[0] === '1').length === 2, r.fired);
 	ok('bottom exit fires no skip', !r.fired.some((f) => f[0] === '4'), r.fired);
+}
+
+// parked is one-shot per pass (not cleared on unpark — reverse stays silent)
+// but leaving through the bottom re-arms it with view.
+{
+	const out = new Int32Array(2);
+	let st = 0;
+	st = VNS.eventStep(st, VNS.E_VIEW | VNS.E_PARKED, 100, 800, 40, out)[0];
+	ok('parked latches with view', !!(st & VNS.E_PARKED) && (out[1] & VNS.E_PARKED), st);
+	VNS.eventStep(st, VNS.E_VIEW, 100, 800, 40, out); // unpark, still on screen
+	ok('unpark does not re-arm parked (reverse stays silent)', !(out[1] & VNS.E_PARKED) && (out[0] & VNS.E_PARKED), out[0]);
+	st = VNS.eventStep(st, 0, 900, 800, 40, out)[0];   // d > vh+hs
+	ok('bottom exit re-arms parked', !(st & VNS.E_PARKED), st);
+	VNS.eventStep(st, VNS.E_VIEW | VNS.E_PARKED, 100, 800, 40, out);
+	ok('parked fires again on a new pass', !!(out[1] & VNS.E_PARKED), out[1]);
 }
 
 // reversibility: the state machine's *set* of fired events must not depend on

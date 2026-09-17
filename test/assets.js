@@ -61,7 +61,9 @@ async function main() {
 		/#app\s*\{[^}]*position:relative[^}]*z-index:1/.test(harnessCSS));
 	ok('contract: page colour lives on <html> from the morph vars',
 		/html\s*\{[^}]*background:var\(--vns-bg/.test(harnessCSS));
-	ok('contract: in-flow .bg fallback has a height', /#app \.bg[^}]*min-height:/.test(harnessCSS));
+	ok('contract: no-engine .bg fallback is a behind-text layer',
+		/#app \.bg\{[^}]*position:absolute[^}]*z-index:-1/.test(harnessCSS));
+	ok('contract: no-engine .bg fallback has a height', /#app \.bg\{[^}]*height:var\(--vns-vh,100vh\)/.test(harnessCSS));
 
 	// saxes is strict where jsdom's DOMParser is not: an SVG data URI that is
 	// not well-formed XML renders as a blank box in a browser, silently.
@@ -86,7 +88,7 @@ async function main() {
 
 	const injected = doc.getElementById('vns-css').textContent;
 	eq('engine css parses', parseCSS(injected, 'vns.js CSS').length, 0);
-	for (const m of ['cover', 'contain', 'fixed', 'auto']) {
+	for (const m of ['cover', 'tiled', 'contain', 'fixed', 'auto']) {
 		ok('engine css sizes mode ' + m, injected.includes('[data-mode="' + m + '"]'));
 	}
 	ok('layer is fixed and 100% wide, not 100vw', /#vns-layer\{[^}]*position:fixed[^}]*width:100%/.test(injected) && !/100vw/.test(injected));

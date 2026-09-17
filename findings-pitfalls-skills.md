@@ -77,6 +77,65 @@ layer under `#app` also beats per-wagon `position:fixed`: no ancestor
 **`will-change:transform` on ~20 viewport-sized layers is VRAM, not a win.**
 Cap `n`; measure.
 
+**In-flow panels are layout: they move the anchors.** On viewports below the
+panel media query, the dev/QA panels are static blocks above the content
+scope; the first diagnostics tick fills the stats `<pre>` (one line → six)
+and each painted QA row grows the panel by more — every one of those shifts
+the whole story by hundreds of px. The engine re-measures only on
+`refresh()`, so the host must refresh *when the panel height actually
+changes* (compare `offsetHeight` per tick, refresh on delta — a per-tick
+refresh breaks the "no frames when idle" guarantee). When QA paints rows,
+record the new height immediately before scheduling that refresh; waiting for
+the next 10 Hz diagnostic tick can re-measure in the middle of reversibility.
+Symptom otherwise: wagons riding a few hundred px off their text, invisible to
+any probe that reads the engine's own (stale) geometry.
+
+**A themed class that changes layout turns scroll anchoring against you.** The
+morph owns class names on `<html>`, so a rule like
+`html.night #app h4.n{border-bottom:2px solid}` fires *while the page is
+scrolled*: every anchor below that border moves 2px, and the browser's scroll
+anchoring then silently rewrites `window.scrollY` to keep the visible content
+in place (ask for 2975, land on 2977). The page still looks perfect; the
+engine's math is pure and its measured geometry never changed — but the same
+scroll request now lands a few px off depending on history, so `reversibility`
+fails with transforms differing by exactly the border, and only in the pass
+where the class toggle landed inside the probe's settle window. Whether a
+sampled position lands in the class's territory is seed luck, which is why it
+reads as "first run all ok, every regen fails". Three rules: theme CSS keyed
+on engine classes must be paint-only (reserve the space — a permanent
+`transparent` border the class colors — 0.3's "zero layout shift" AC exists
+for exactly this); the engine ships `html{overflow-anchor:none}` because
+`scrollY` is its only input and must mean precisely what the caller set; and
+the reversibility probe asserts the scroll request landed where it was sent,
+so this failure mode names itself instead of reporting "5 differ".
+
+**QA measures; autoscroll performs — never both.** Space toggles autoscroll,
+and after clicking a button, space feels like "run", so QA gets launched with
+the page scrolling itself. Symptom: a catastrophic multi-row failure that
+contradicts a visually perfect page — event counters in the hundreds (the
+probe's `scrollTo` and autoscroll's `+speed` per frame fight, the page loops
+the document and every latch re-arms), `idle` reporting frames at the display
+refresh rate, scroll requests landing a document-height off, riding/jump
+errors in the thousands of px — and the *next* run passes, because the
+symptom is the probe racing another writer of `scrollY`, not the engine.
+`qaAll()` therefore stops autoscroll before the first probe; a drift detail
+that says "the page moved under the probe" is the same family, seen from the
+reversibility row. The run is also single-flight: disable the QA button while
+its awaits are pending and ignore another `q`/click. A second async probe would
+reset the shared rows and event counters while the first still owns `scrollY`,
+creating failures that neither run can explain.
+
+**`VNS.wagons` is a fresh object after every re-measure — captured references
+go stale silently.** `measureWagons` republishes `VNS.wagons = {…}` with new
+arrays each time it runs, so any `refresh()` consumed mid-QA-run (a resize,
+`fonts.ready`, a panel change) invalidates the record a probe captured at its
+start: targets derive from old `y`, `pos` reads come from an array the engine
+no longer writes. Symptom: `anchorAlign` reporting a riding error the chain
+math provably cannot produce (the cushion theorem in `test/math.js` is the
+exoneration). Probes must re-fetch the record after every engine step and
+re-derive derived targets from the fetched record (`settleWhere` in the
+harness); fixed-position probes only need the re-fetch.
+
 ## Colour and morph
 
 **Lerp channels in linear light.** sRGB values are gamma-encoded; a straight
@@ -101,8 +160,30 @@ invalidate styles every pixel.
 
 ## Events
 
+**Lateral exit is a different axis, so do not write `x = t` 1:1.** Chain `t` is in
+wagon-heights. A 256px `data-dir=right` box sliding 256px sits in the middle of
+the page and every later wagon nudges it — that reads as "it never leaves".
+Scale so `t = -ext` maps onto `±innerWidth` (just off-screen). Clip the layer
+(`overflow:hidden`); a translated full-width box must not create a horizontal
+scrollbar.
+
 **Hysteresis belongs on the reset edge only.** `[40px margin][reset][trigger][40px]`:
 put it on the set edge and the event arrives 40 px late, which is visible.
+`parked` must be in that reset mask: leave it out and a second forward pass
+(or a QA probe after another probe) never fires `parked` again. Do **not**
+clear it on `pos != 0` — that re-fires on reverse scroll.
+
+**QA probes that walk the document consume latches.** `events()` must
+`refresh()` at the top before a slow pass and again before a flick, and the
+slow walk must include `scrollHeight - innerHeight` (a `+= step` loop can stop
+a few px short of the last `end`). The jump probe must treat a parking-frame
+`Δ ∈ (-step, 0)` as legal, not as a jump.
+
+**`window.VNS` exists with `?engine=0`.** Boot is skipped, but the object is
+there, so `window.VNS ? 'on' : 'off'` lies. Check `VNS.booted`. Without the
+engine (or with JS off) `.bg` falls back behind the text at its written
+position (0.1's `#app .bg` rules: static-positioned abspos, `z-index:-1`) —
+that is the diagnostic baseline, not a failed hoist.
 
 **`display:none` elements have no box.** A `<script>` trigger gets `h=0`: `end`
 means "the tag itself crossed the top", which is exactly the author-facing knob
@@ -199,10 +280,17 @@ being live while the engine was disabled.
 
 ## Sandbox reality check
 
-There is no browser here and Playwright's CDN is blocked, so **nothing in this repo
-proves paint**. Never write "verified in browser" — the honest state is: math green
-in Node, DOM mechanics green in jsdom, page wiring green in jsdom, look and feel
-pending a human on the served preview.
+Playwright's CDN is blocked here, but a real Chromium *is* reachable through
+npm alone: `npm i --no-save puppeteer-core @sparticuz/chromium`, brotli-inflate
+its `bin/al2023.tar.br` to `/tmp/al2023` (the NSS libs the binary needs:
+`libnspr4/libnss3/libnssutil3` — apt cannot install them, the distro mirrors
+are blocked too), then launch with `executablePath:'/tmp/chromium'` (inflated
+once by the package's `executablePath()`) and `LD_LIBRARY_PATH=/tmp/al2023/lib`.
+That runs the real index.html with real layout, so paint-level claims
+("reversibility passes in a browser", "the night border shifts anchors") can be
+verified mechanically — which is how the scroll-anchoring pitfall above was
+found. Without it, the honest state is: math green in Node, DOM mechanics green
+in jsdom, page wiring green in jsdom, look and feel pending a human.
 
 ## Repo conventions
 

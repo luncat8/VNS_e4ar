@@ -83,12 +83,23 @@ async function main() {
 	ok('diagnostics panel has content', doc.getElementById('dstats').textContent.length > 40);
 	eq('rail marker initialised', doc.getElementById('mark').textContent === '0', true);
 
-	// QA probes must run to completion on any DOM, and report per row
+	// QA probes must run to completion on any DOM, and report per row. A second
+	// launch while the first awaits must not reset the shared probe state.
 	const before = errs.length;
-	await win.eval('qaAll()');
+	const firstQA = win.eval('qaAll()');
+	eq('QA button locks while a run is pending', doc.getElementById('qaBtn').disabled, true);
+	win.eval('qaAll()');
+	eq('duplicate QA launch leaves the run locked', doc.getElementById('qaBtn').disabled, true);
+	await firstQA;
 	ok('QA probes ran without throwing', errs.filter((e, i) => i >= before && /Cannot read|is not a function|undefined/.test(e)).length === 0,
 		errs.slice(before).join('\n').slice(0, 300));
+	eq('QA button unlocks after a run', doc.getElementById('qaBtn').disabled, false);
+	eq('QA button label is restored', doc.getElementById('qaBtn').textContent, 'QA all (q)');
 	ok('QA produced rows', doc.getElementById('qa').children.length >= 4, doc.getElementById('qa').children.length);
+	const beforeSecond = errs.length;
+	await win.eval('qaAll()');
+	ok('second QA run completes cleanly', errs.filter((e, i) => i >= beforeSecond && /Cannot read|is not a function|undefined/.test(e)).length === 0,
+		errs.slice(beforeSecond).join('\n').slice(0, 300));
 
 	// hash config round trip
 	win.eval('cfg.preset="tight";cfg.n=9;syncForm();writeHash();regen(true)');

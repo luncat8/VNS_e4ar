@@ -37,3 +37,9 @@
 findings-pitfalls-skills.md - notes and pitfalls for LLM agents. write here if found good way to do something.
 
 archive/ - for implemented plans
+
+## sandbox
+
+git push returns "Invalid username or token" is ok, no need to investigate or report - i will apply manually
+
+if something need to test on real browser - i prefer in-gui button to test and save file, without init npm.

@@ -1,0 +1,111 @@
+An in-depth analysis and side-by-side comparison of the implementation in **`main`** (commits `89f13cc` and `f1912b5`) and **branch `1`** (`origin/1`, commit `7595e78` *"alternate fix"*):
+
+---
+
+### 1. Executive Summary & Comparison Matrix
+
+Branch `1` was created directly off the initial planning commit (`c0dd3b8`) as an alternate, simplified single-class implementation. Meanwhile, `main` received full development, extensive bug fixing, 4 test gates, and production hardening.
+
+While `main` is technically far more advanced, robust, and performant, **branch `1` has several clean API design choices and developer conveniences that `main` currently lacks.**
+
+| Feature / Area | Branch `1` (`origin/1`) | Branch `main` |
+| :--- | :--- | :--- |
+| **API & Lifecycle** | **Object-oriented class** (`new VNS(options)`). Has `.setEnabled(bool)`, `.destroy()`, and `onFrame` callback. | **Global singleton** (`window.VNS`). Auto-boots on DOM load. Controlled primarily via URL query flags (`?engine=0`). No `.destroy()`. |
+| **DOM Strategy** | **Inline fixed elements**: leaves `.bg` in place with `position: fixed`. Breaks if ancestors have `transform`, `filter`, or `contain`. | **Hoisted fixed layer**: hoists all wagons into a dedicated `#vns-layer` under `<body>`. Immune to ancestor CSS clipping/transforms. |
+| **Scroll / Frame Performance** | ⚠️ **Severe layout thrashing**: calls `getBoundingClientRect()` on every anchor, style node, and script on **every scroll frame**. | **Zero forced reflows during scroll**: strict 3-phase pipeline (`measure` $\to$ `arrange` $\to$ `frame`). Scroll frames do pure Float64Array math with 0 DOM reads. |
+| **Wagon Physics Math** | ⚠️ Coupled 2D pairwise calculation. Has a bug where bottom exits jump preceding wagons back on screen. | **1D decoupled chain physics** (`wagonChain` + `wagonExit`). Monotone, provably reversible, zero jumps. |
+| **Wagon Sizing Attributes** | Supports `data-mode`, `data-w`, `data-h`, and sets CSS `--vns-w` / `--vns-h`. | Supports `data-mode` and `data-size="WxH"`, but does not support separate `data-w` and `data-h`. |
+| **Color Morphing** | Naive sRGB gamma interpolation (muddy dark midtones). Only hex `#rgb`/`#rrggbb`. Re-writes styles every frame. | **Linear-light LUTs (`S2L`/`L2S`)** for perceptually pure color glides. Supports `#rrggbbaa`, `rgb()`, `rgba()`, `%`, CSS paint tokens, and hold semantics. |
+| **Write Gating (Idle)** | Writes styles every frame even when idle. | **Write gating**: skips style mutations when coordinates match previous frame. Writes drop to 0 when idle. |
+| **Script Events** | Tied to `<section>` tags; re-fires `parked` on reverse scroll. | Free DOM placement; edge-triggered state machine with reset-only hysteresis; distinguishes `skip` from `end`. |
+| **Test Suite** | 1 basic file (`test/math.js`, 30 lines, 4 assertions). | 4 comprehensive test gates (`math.js` with 72,000+ property checks, `dom.js`, `page.js`, `assets.js`). |
+
+---
+
+### 2. What Is Useful to Pick from Branch `1`?
+
+Branch `1` contains several valuable ideas that would significantly improve `main` for library consumers and web developers:
+
+1. **Object-Oriented Lifecycle API (`new VNS(options)`, `.destroy()`, `.setEnabled()`)**:
+   - `main` is tightly coupled to a browser window singleton and URL query flags.
+   - Branch `1` provides a proper class with lifecycle management. In single-page applications (React, Vue, Svelte, Turbo), being able to instantiate `new VNS({ scope: el })`, dynamically toggle it with `instance.setEnabled(false)`, and remove listeners on unmount with `instance.destroy()` is essential.
+2. **Flexible Sizing with `data-w` and `data-h`**:
+   - Branch `1` allows authors to write `<i class="bg" data-w="360" data-h="220">`, which is more natural in HTML than packing them into `data-size="360x220"`.
+3. **Publishing `--vns-w` and `--vns-h` CSS Custom Properties**:
+   - Branch `1` writes `--vns-w` and `--vns-h` onto each wagon element, allowing authored stylesheets to easily reference or adapt dimensions in CSS.
+4. **Frame Callback Hook (`options.onFrame`)**:
+   - Branch `1` provides an `onFrame(instance)` hook so external tools, HUDs, or story controllers can observe engine ticks without monkey-patching `requestAnimationFrame`.
+
+---
+
+### 3. What Is Better in `main` (Critical Bugs in Branch `1`)
+
+If you want to improve branch `1`, here are the critical flaws in branch `1` that `main` already solved:
+
+1. **Per-frame Layout Thrashing (The biggest performance bug)**:
+   - In branch `1`, `measureAnchors()` calls `getBoundingClientRect()` inside `this.frame()` **on every single animation frame**. This forces synchronous browser reflows and ruins 60fps scrolling on complex pages.
+   - `main` separates measurements into 3 distinct phases: `measureAll()` runs once on resize/refresh, `arrange()` maps anchors, and `frame()` runs purely on typed arrays with zero DOM reads.
+2. **2D Coupled Collision Math Glitch**:
+   - In branch `1`, `resolveWagons` calculates collision in screen coordinates directly. If a wagon exits to the bottom (`DIR_BOTTOM`), `outY` becomes positive ($+480\text{px}$). Because the previous wagon checks `nextY < heights[i]`, it interprets the downward movement as release, causing the previous off-screen wagon to **jump from $-500\text{px}$ back to $-20\text{px}$ onto the screen**.
+   - `main` models the train as a continuous 1D scalar chain (`wagonChain`), then projects into 2D coordinates via `wagonExit` and `wagonLateral`.
+3. **Ancestor Clipping and Stacking Contexts**:
+   - In branch `1`, keeping `.bg` unhoisted with `position: fixed` breaks as soon as an ancestor has `transform`, `filter`, `backdrop-filter`, `perspective`, or `contain: paint` (CSS specification defines transformed ancestors as the containing block for fixed descendants).
+   - In branch `1`, `.vns-disabled .bg { position: absolute }` positions elements relative to their closest positioned ancestor, which misaligns them completely if any section is `position: relative`.
+   - `main` solves this by hoisting wagons into a top-level `#vns-layer`.
+4. **Color Morphing in Gamma Space**:
+   - Branch `1` blends sRGB channels directly (`ar + (br - ar) * amount`), causing colors to pass through a dark, muddy midpoint (e.g. blue to red creates an ugly dark brown-gray). `main` uses precomputed linear-light LUTs (`S2L`/`L2S`).
+5. **No Write Gating**:
+   - Branch `1` mutates DOM styles on every frame even when the page is stationary, draining laptop battery and inflating frame counts. `main` compares numeric values and achieves $0\text{ writes/frame}$ when idle.
+
+---
+
+### 4. The Two Improvement Plans
+
+#### Plan 1: Modernize `main` by Adopting the Best of Branch `1`
+*Goal: Turn `main` into a modular, framework-friendly library without losing its mathematical rigor or zero-reflow performance.*
+
+1. **Dual API Architecture (Class + Backwards-Compatible Singleton)**:
+   - Refactor `vns.js` to export a `class VNS` (or constructor function).
+   - Maintain the automatic singleton boot for classic script tags, but allow `const engine = new VNS({ scope, enabled, onFrame })`.
+   - Implement `destroy()` to cleanly detach `scroll`, `resize`, and `requestAnimationFrame` listeners and remove `#vns-layer`.
+   - Implement `setEnabled(bool)` to toggle execution and unhoist/restore elements dynamically.
+2. **Authoring Convenience**:
+   - In `wagonAdopt`, support `data-w` and `data-h` as fallbacks if `data-size` is omitted:
+     ```js
+     const w = el.dataset.w || parseFloat(el.dataset.size);
+     const h = el.dataset.h || (el.dataset.size ? ... : w);
+     ```
+   - Set `--vns-w` and `--vns-h` inline CSS variables on each adopted wagon element for authored CSS styling.
+3. **Diagnostics & External Hook (`onFrame`)**:
+   - Expose `options.onFrame(instance)` at the end of `frameAll()`.
+   - Update `harness.js` to use `onFrame` instead of separate 100ms interval polling.
+4. **Validation**:
+   - Run the 4 existing test gates (`node test/run.js`) and add a test in `test/dom.js` covering `new VNS()`, `.destroy()`, and `setEnabled()`.
+
+---
+
+#### Plan 2: Upgrade Branch `1` by Backporting `main`'s Core Architecture
+*Goal: If you want to keep branch `1` as a standalone, lightweight, object-oriented alternative, fix its fatal performance and mathematical bugs.*
+
+1. **Eliminate Layout Thrashing (Implement 3-Phase Scheduling)**:
+   - Remove `this.measureAnchors(scrollY)` from `this.frame()`.
+   - Read `getBoundingClientRect()` once during `refresh()` and cache the Y positions in `this.y` Float64Arrays.
+   - During `frame()`, compute `free[i] = this.y[i] - scrollY` with zero DOM queries.
+2. **Replace Pairwise Collision with 1D Chain Math**:
+   - Replace branch `1`'s `resolveWagons` with `wagonChain()` + `wagonExit()` + `wagonLateral()`. This immediately fixes the bottom-exit jump bug and ensures perfect scroll reversibility.
+3. **Add Write Gating**:
+   - Store `lastX` and `lastY` Float64Arrays.
+   - Before writing `wagon.style.transform`, check if `x === this.lastX[i] && y === this.lastY[i]`. Only touch the DOM when changed.
+4. **Fix DOM Containment / Hoisting**:
+   - Add a container layer or isolate `.bg` elements so that author styles (filters/transforms on `.chapter`) do not break fixed positioning.
+   - Fix the disabled state so wagons sit properly behind text without relying on buggy `position: absolute` against relative parents.
+5. **Linear-Light Color Blending**:
+   - Port the 256-entry `S2L` and 1024-entry `L2S` lookup tables from `main` into branch `1`'s color interpolator to eliminate muddy midtones.
+6. **Backport Unit Tests**:
+   - Copy `test/math.js` property tests into branch `1` to verify reversibility and collision correctness.
+
+---
+
+### Recommendation
+
+**Plan 1 is the most impactful and practical path.** `main` already has the solid mathematical foundation, 4 passing test suites (over 73,000 checks), and the zero-reflow performance engine. Enhancing `main` with branch `1`'s lifecycle API (`new VNS()`, `destroy()`, `setEnabled()`, `onFrame`, and `data-w`/`data-h`) will give you the best of both worlds.

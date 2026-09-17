@@ -72,6 +72,15 @@ function wagonExit(t, dir, out) {
 	return out;
 }
 
+// Chain pos is in wagon-heights. A 256px box sliding 256px right sits in the
+// middle of the page and every later wagon nudges it — that is not an exit.
+// Scale so t = -ext (next wagon has fully replaced this one) lands x = ±span,
+// i.e. just past the viewport edge. span is innerWidth, cached, not read here.
+function wagonLateral(x, ext, span) {
+	if (x === 0 || !(ext > 0) || !(span > 0)) return x;
+	return x * span / ext;
+}
+
 // sRGB <-> linear. Lerping channels in sRGB space darkens the middle of a
 // blue->red glide; LUTs keep pow() out of the frame loop.
 const S2L = new Float32Array(256);
@@ -171,7 +180,10 @@ function eventEdges(d, h, vh, parked) {
 function eventStep(state, edges, d, vh, hs, out) {
 	let next = state;
 	if (!(edges & E_END)) next &= ~E_END;       // back on screen: re-arm end only
-	if (d > vh + hs) next &= ~(E_VIEW | E_CENTER | E_END | E_SKIP);
+	// Left through the bottom: a new forward pass starts from scratch.
+	// PARKED is in this mask (and not cleared on unpark) so reverse scroll
+	// stays silent, but a second read after leaving the topic can fire again.
+	if (d > vh + hs) next &= ~(E_VIEW | E_CENTER | E_PARKED | E_END | E_SKIP);
 	const fresh = edges & ~next;
 	next |= edges;
 	let fire = fresh;
@@ -183,16 +195,24 @@ function eventStep(state, edges, d, vh, hs, out) {
 }
 
 // ------------------------------------------------------------- engine css
+// scrollY is the engine's only input, so the page opts out of scroll
+// anchoring: when CSS keyed on a morph class (or anything else) shifts layout
+// while scrolled, the browser silently rewrites scrollY to keep the old
+// content in place. The chain would then retrace differently for the same
+// requested position — reversibility fails by exactly the layout shift, and a
+// class boundary can even oscillate with the frame loop's keep-going poke.
 // Wagons live in one hoisted layer and are position:absolute inside a fixed
 // full-viewport box. That is immune to ancestor transform/filter/contain (which
 // silently re-parents position:fixed) and to ancestor overflow clipping. Layer
 // width is 100%, not 100vw, so a vertical scrollbar cannot make cover wagons
 // wider than the page and cause phantom horizontal overflow.
 const CSS = ''
-	+ '#vns-layer{position:fixed;left:0;top:0;width:100%;height:100%;z-index:0;pointer-events:none;contain:layout paint}'
+	+ 'html{overflow-anchor:none}'
+	+ '#vns-layer{position:fixed;left:0;top:0;width:100%;height:100%;z-index:0;pointer-events:none;overflow:hidden;contain:layout paint}'
 	+ '#vns-layer>.vns-bg{position:absolute;left:0;top:0;margin:0;padding:0;border:0;overflow:hidden;'
 	+ 'background-repeat:no-repeat;will-change:transform;transform:translate3d(0,0,0)}'
 	+ '#vns-layer>.vns-bg[data-mode="cover"]{width:100%;height:var(--vns-vh,100vh);background-size:cover;background-position:50% 50%}'
+	+ '#vns-layer>.vns-bg[data-mode="tiled"]{width:100%;height:var(--vns-vh,100vh);background-size:auto;background-repeat:repeat}'
 	+ '#vns-layer>.vns-bg[data-mode="contain"]{width:100%;height:var(--vns-vh,100vh);background-size:contain;background-position:50% 50%}'
 	+ '#vns-layer>.vns-bg[data-mode="fixed"]{width:512px;height:512px;background-size:100% 100%}'
 	+ '#vns-layer>.vns-bg[data-mode="auto"]{width:512px;height:512px;background-size:auto;background-position:0 0}'
@@ -416,7 +436,8 @@ function frameWagons() {
 	for (let i = 0; i < wn; i++) {
 		wparked[i] = wagonParked(wfree, wpos, i);
 		wagonExit(wpos[i], wdir[i], wscratch);
-		const x = wscratch[0], y = wscratch[1];
+		let x = wscratch[0], y = wscratch[1];
+		if (x !== 0 && (wdir[i] === DIR_LEFT || wdir[i] === DIR_RIGHT)) x = wagonLateral(x, wext[i], vw);
 		if (y === wlastY[i] && x === wlastX[i]) continue;   // parked => zero style work
 		VNS.debug.wet++;
 		wlastY[i] = y;
@@ -684,8 +705,8 @@ function boot() {
 	if (VNS.options.morph) VNS.use({ measure: measureStyle, arrange: arrangeStyle, frame: frameStyle });
 	if (VNS.options.events) VNS.use({ measure: measureEvents, arrange: arrangeEvents, frame: frameEvents });
 	window.addEventListener('scroll', poke, { passive: true });
-	window.addEventListener('resize', poke, { passive: true });
-	window.addEventListener('orientationchange', poke, { passive: true });
+	window.addEventListener('resize', function () { measuring = 1; poke(); }, { passive: true });
+	window.addEventListener('orientationchange', function () { measuring = 1; poke(); }, { passive: true });
 	window.addEventListener('load', poke, { passive: true });
 	if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { VNS.refresh(); });
 	measuring = 1;
@@ -702,7 +723,7 @@ if (typeof location !== 'undefined') {
 
 VNS.pure = {
 	clamp01: clamp01, ease: ease, lastIndexLE: lastIndexLE, wagonChain: wagonChain,
-	wagonParked: wagonParked, wagonExit: wagonExit, parseColor: parseColor, parseHex: parseHex,
+	wagonParked: wagonParked, wagonExit: wagonExit, wagonLateral: wagonLateral, parseColor: parseColor, parseHex: parseHex,
 	mixColor4: mixColor4, eventEdges: eventEdges, eventStep: eventStep, S2L: S2L, L2S: L2S,
 	E_VIEW: E_VIEW, E_CENTER: E_CENTER, E_PARKED: E_PARKED, E_END: E_END, E_SKIP: E_SKIP,
 	DIR_TOP: DIR_TOP, DIR_LEFT: DIR_LEFT, DIR_RIGHT: DIR_RIGHT, DIR_BOTTOM: DIR_BOTTOM

@@ -17,29 +17,55 @@ body{margin:0;font:15px/26px ui-monospace,SFMono-Regular,Menlo,Consolas,monospac
 #app .run{font-size:22px}
 #app .tail{height:100vh;display:grid;place-content:center;text-align:center;opacity:.5}
 
-/* in-flow fallback: what an author sees with the engine off (?engine=0) or on a
-   data-static / .bgwindow element */
-#app .bg,#app .bgwindow{display:block;min-height:44vh;margin:6px 0;background-position:50% 50%;background-repeat:no-repeat;
+/* No-engine fallback: with ?engine=0, on a data-static element, or with JS
+   disabled entirely, .bg leaves the flow and paints BEHIND the prose at the
+   point it was written — a cover bg behind a chapter's first screen, a tiled
+   bg repeated over it. No top: the box takes its static (in-flow) position,
+   so "where the author put it" is all the CSS needs. z-index:-1 inside #app's
+   stacking context: above the page colour (on <html>), below every line.
+   Hoisted wagons leave #app, so this never competes with #vns-layer rules —
+   pure CSS, zero engine cost. .bgwindow stays in-flow: it is the author's
+   "just a normal background" block, by contract. */
+#app .bg{position:absolute;left:0;width:100%;height:var(--vns-vh,100vh);z-index:-1;margin:0;
+	background-repeat:no-repeat;background-position:50% 50%;background-size:cover}
+#app .bg[data-mode="contain"]{background-size:contain}
+#app .bg[data-mode="tiled"]{background-size:auto;background-repeat:repeat}
+#app .bg[data-mode="fixed"],#app .bg[data-mode="auto"]{width:512px;height:512px;background-size:100% 100%}
+#app .bg[data-mode="auto"]{background-size:auto}
+#app .bg > .bgl::after{content:" · fallback"}
+#app .bgwindow{display:block;min-height:44vh;margin:6px 0;background-position:50% 50%;background-repeat:no-repeat;
 	background-size:cover;border:1px solid #0002;border-radius:4px}
 .bgl{display:inline-block;margin:4px;padding:2px 6px;font:11px/16px ui-monospace,monospace;font-weight:700;
 	background:#000c;color:#fff;border-radius:3px}
 
-/* theme demo: the engine only toggles these names and sets --vns-bg/--vns-fg */
+/* theme demo: the engine only toggles these names and sets --vns-bg/--vns-fg.
+   All rules here are paint-only: a morph class fires while the page is
+   scrolled, so any layout it shifts (a real border, a line-height) moves every
+   anchor below it and the browser's scroll anchoring silently rewrites
+   scrollY to compensate — the page still looks right, but the same scroll
+   request lands a few px off depending on history and reversibility fails
+   with transforms differing by exactly the shift. The heading rule reserves
+   its 2px border permanently and lets night paint it. */
 html.dusk #app{filter:saturate(.86) brightness(.97)}
 html.night #app{filter:brightness(.9) contrast(1.08)}
-html.night #app h4.n{border-bottom:2px solid currentColor}
+#app h4.n{border-bottom:2px solid transparent}
+html.night #app h4.n{border-bottom-color:currentColor}
 html.fog #app{text-shadow:0 1px 0 var(--vns-bg)}
 html[data-last] #app h4.n::after{content:"";}
 
 /* panels */
 #gen,#diag{position:fixed;top:0;z-index:9;max-height:100vh;overflow:auto;padding:8px 10px;
 	background:#0c0c0ee8;color:#e9e6df;font:11px/15px ui-monospace,monospace;border:1px solid #ffffff22}
-#gen{left:0;width:322px;border-top:0;border-left:0;border-radius:0 0 10px 0}
+/* On wide screens the panel grows with the viewport so selects and labels fit
+   their text; below 1100px it goes static full-width (media query below). */
+#gen{left:0;width:clamp(322px,26vw,440px);border-top:0;border-left:0;border-radius:0 0 10px 0}
 #diag{right:0;width:346px;border-top:0;border-right:0;border-radius:0 0 0 10px}
 #gen fieldset{border:0;margin:0 0 6px;padding:0;display:flex;flex-wrap:wrap;gap:6px 10px}
 #gen legend{padding:0;font-weight:700;text-transform:uppercase;letter-spacing:.08em;opacity:.55;font-size:9px}
-#gen label{display:flex;flex-direction:column;gap:1px;min-width:62px;flex:1 1 62px}
-#gen label.rowf{flex-direction:row;align-items:center;gap:4px;min-width:0}
+/* flex-basis auto + no min-width override: an item is its own content, wraps
+   to the next row instead of clipping its select/label text. */
+#gen label{display:flex;flex-direction:column;gap:1px;flex:0 1 auto}
+#gen label.rowf{flex-direction:row;align-items:center;gap:4px}
 #gen select,#gen input[type=range]{width:100%;font:inherit;color:inherit;background:#1d1d20;border:1px solid #ffffff26;border-radius:4px;padding:1px 2px}
 #gen input[type=checkbox]{accent-color:#7ad06a;margin:0}
 #gen output{font-weight:700}
@@ -47,6 +73,7 @@ html[data-last] #app h4.n::after{content:"";}
 #gen button,#gen .btn{flex:1 1 auto;font:inherit;color:inherit;background:#26262b;border:1px solid #ffffff2e;
 	border-radius:4px;padding:3px 6px;cursor:pointer}
 #gen button:hover{background:#3a3a42}
+#gen button:disabled{opacity:.6;cursor:wait}
 #gen button[data-on="1"]{background:#2f5d33;border-color:#7ad06a}
 #dstats{margin:0;white-space:pre-wrap;font:inherit}
 #qa{margin-top:6px;border-top:1px solid #ffffff1f;padding-top:4px;display:grid;gap:2px;cursor:pointer}

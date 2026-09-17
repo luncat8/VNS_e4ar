@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 
 let app = null;
 let HLOG = [], seed = 1, rnd = Math.random;
-let qaRows = [], autoTimer = 0, autoSpeed = 6, regenMs = 0, lastFrames = 0, fps = 0, diagTick = 0;
+let qaRows = [], qaRunning = 0, autoTimer = 0, autoSpeed = 6, regenMs = 0, lastFrames = 0, fps = 0, diagTick = 0, panelH = 0;
 
 const PAL = [
 	{ L: 'R', c: '#d92b1f', soft: '#ffb3a8', g: 'linear-gradient(165deg,#ff7a6b,#6e0d06)' },
@@ -15,7 +15,7 @@ const PAL = [
 	{ L: 'P', c: '#7a34c0', soft: '#dcb8ff', g: 'linear-gradient(135deg,#cfa0ff,#2c0a52)' },
 	{ L: 'C', c: '#5c5c5c', soft: '#d2d2d2', g: 'repeating-conic-gradient(#3a3a3a 0% 25%,#e6e6e6 0% 50%)', sz: '72px 72px' }
 ];
-const MODES = ['cover', 'contain', 'fixed', 'auto'];
+const MODES = ['cover', 'tiled', 'contain', 'fixed', 'auto'];
 const DIRS = ['top', 'left', 'right', 'bottom'];
 const CLASSES = ['day', 'dusk', 'night', 'fog'];
 const LINES = { tiny: 18, mono: 64, huge: 220 };
@@ -108,7 +108,10 @@ function svgURI(w, h, pal, idx, note) {
 // ------------------------------------------------------------------ markup
 
 function bgHTML(idx, pal, mode, size, dir, extra) {
-	const note = mode + (mode === 'fixed' || mode === 'auto' ? ' ' + size : '');
+	const note = mode + ((mode === 'fixed' || mode === 'auto' || mode === 'tiled') ? ' ' + size : '');
+	// tiled paints an image the box can repeat, so it gets the SVG like
+	// fixed/auto, never a gradient (a gradient fills its box once and does not
+	// tile). The tile size is the image size — no data-size needed.
 	const svg = mode !== 'cover' && mode !== 'contain';
 	const img = svg ? "url('" + svgURI(size, size, pal, idx, note) + "')" : pal.g;
 	const tile = !svg && pal.sz ? ';background-size:' + pal.sz : ';';
@@ -117,8 +120,10 @@ function bgHTML(idx, pal, mode, size, dir, extra) {
 	if (dir !== 'top') a.push('data-dir="' + dir + '"');
 	if (cfg.style) a.push('data-bg="' + pal.soft + '"');
 	if (extra) a.push(extra);
+	const stat = extra && extra.indexOf('data-static') >= 0;
 	return '<div ' + a.join(' ') + ' style="background-image:' + img + tile + '"><b class="bgl">bg ' + idx + ' · ' + note
-		+ (dir !== 'top' ? ' → ' + dir : '') + '</b></div>';
+		+ (dir !== 'top' ? ' → ' + dir : '')
+		+ (stat ? ' · static, not a wagon' : '') + '</b></div>';
 }
 
 function textHTML(k, from, count) {
@@ -162,7 +167,8 @@ function chapterHTML(k, bgIdx) {
 	const pal = PAL[k % PAL.length];
 	const mode = cfg.mode === 'mixed' ? pick(MODES) : cfg.mode;
 	const size = cfg.size === 'mixed' ? pick([256, 512, 1024]) : +cfg.size;
-	const dir = cfg.dir === 'mixed' && k % 4 === 3 ? pick(DIRS) : 'top';
+	const dir = cfg.dir === 'mixed' ? (k % 4 === 3 ? pick(DIRS) : 'top')
+		: (DIRS.indexOf(cfg.dir) >= 0 ? cfg.dir : 'top');
 	const lines = LINES[cfg.len] + (cfg.gap === 'mixed' ? (rnd() * 48 | 0) : 0);
 	const gap = cfg.gap === 'zero' ? 0 : cfg.gap === 'same' ? 6 : cfg.gap === 'huge' ? 60 + (rnd() * 40 | 0) : 2 + (rnd() * 26 | 0);
 	const flat = cfg.nest === 'flat' || (cfg.nest === 'both' && k % 2 === 0);
@@ -224,8 +230,10 @@ function build() {
 
 // ------------------------------------------------------------ diagnostics
 
+function engineOn() { return !!(window.VNS && VNS.booted); }
+
 function engineState() {
-	const w = window.VNS ? VNS.debug : null;
+	const w = engineOn() ? VNS.debug : null;
 	if (!w || !w.n) return { n: 0, parked: 0, active: -1, pushed: 0, wet: 0 };
 	let parked = 0, active = -1, pushed = 0;
 	for (let i = 0; i < w.n; i++) {
@@ -238,27 +246,34 @@ function engineState() {
 
 function diag() {
 	const s = engineState();
-	const st = window.VNS ? VNS.stats : { frames: 0, fires: [0, 0, 0, 0, 0] };
+	const st = engineOn() ? VNS.stats : { frames: 0, fires: [0, 0, 0, 0, 0] };
 	if (diagTick % 5 === 0) fps = (st.frames - lastFrames) / 0.5;
 	lastFrames = st.frames;
 	diagTick++;
-	const o = window.VNS ? VNS.options : {};
+	const o = engineOn() ? VNS.options : {};
 	const f = st.fires;
 	$('dstats').textContent = [
 		'scrollY ' + Math.round(window.scrollY) + '   vh ' + innerHeight + '   doc ' + document.documentElement.scrollHeight,
-		'morph t ' + (window.VNS && VNS.style ? VNS.style.t.toFixed(2) : '—') + '   wagons ' + s.n + '   active ' + s.active + '   parked ' + s.parked + '   pushed ' + s.pushed + '   writes/frame ' + s.wet,
-		'engine ' + (window.VNS ? 'on' : 'OFF (?engine=0)') + '   frames/s ' + Math.round(fps) + '   regen ' + regenMs.toFixed(1) + 'ms',
+		'morph t ' + (engineOn() && VNS.style ? VNS.style.t.toFixed(2) : '—') + '   wagons ' + s.n + '   active ' + s.active + '   parked ' + s.parked + '   pushed ' + s.pushed + '   writes/frame ' + s.wet,
+		'engine ' + (engineOn() ? 'on' : 'OFF (?engine=0) · .bg fall back behind the text') + '   frames/s ' + Math.round(fps) + '   regen ' + regenMs.toFixed(1) + 'ms',
 		window.VNS ? 'flags wagons=' + o.wagons + ' morph=' + o.morph + ' events=' + o.events + '   anchors: style ' + (VNS.debug.styleN || 0) + '  script ' + (VNS.debug.eventN || 0) : '',
 		window.VNS ? 'fired  view ' + f[0] + '  center ' + f[1] + '  parked ' + f[2] + '  end ' + f[3] + '  skip ' + f[4] : '',
 		'last event: ' + (HLOG.length ? HLOG[HLOG.length - 1] : '—') + '   seed ' + seed
 	].filter(Boolean).join('\n');
+	// Below 1100px the panels are in-flow: when they change height (first tick
+	// fills #dstats, QA rows paint) they shift #app and every anchor with it.
+	// Re-measure on actual height change only, so an idle page stays idle.
+	if (window.VNS) {
+		const h = panelHeight();
+		if (h !== panelH) { panelH = h; VNS.refresh(); }
+	}
 	$('rail').style.backgroundPositionY = -Math.round(window.scrollY) + 'px';
 	$('mark').textContent = Math.round(window.scrollY);
 	if (cfg.wire) wires();
 }
 
 function wires() {
-	const w = window.VNS ? VNS.debug : null;
+	const w = engineOn() ? VNS.debug : null;
 	if (!w || !w.n) { $('wires').innerHTML = ''; return; }
 	const out = [];
 	for (let i = 0; i < w.n; i++) {
@@ -276,6 +291,33 @@ function wires() {
 
 function wagonList() { return window.VNS && VNS.wagons && VNS.wagons.n ? VNS.wagons : null; }
 
+// Every measure() publishes a FRESH VNS.wagons record (new arrays). A
+// refresh() consumed between two probe steps — a resize, fonts.ready, a panel
+// change — therefore invalidates any captured reference: reading it then mixes
+// two geometries (targets from one, pos from another), which is exactly how
+// anchorAlign once reported a 62px riding error the chain math cannot produce.
+// Every read must be paired with the record the engine just stepped.
+function curWagons(fallback) { return wagonList() || fallback; }
+
+// Settle where fn(record) points, and return the record the engine just
+// stepped. If a refresh() is consumed inside the step — a panel height change,
+// a resize, fonts.ready — the engine re-measures and the target derived from
+// the old record is stale: re-derive it from the fresh record and settle
+// again. Bounded: a refresh means the layout actually changed, so it settles.
+async function settleWhere(fn, fallback) {
+	let w = wagonList() || fallback;
+	let target = fn(w);
+	for (let t = 0; t < 3; t++) {
+		await settle(target);
+		const w2 = wagonList() || w;
+		const next = fn(w2);
+		w = w2;
+		if (next === target) break;
+		target = next;
+	}
+	return w;
+}
+
 function settle(y) {
 	return new Promise((done) => {
 		window.scrollTo(0, y);
@@ -288,6 +330,8 @@ function settle(y) {
 
 function maxX() { return Math.max(1, document.documentElement.scrollHeight - innerHeight); }
 
+function panelHeight() { return $('gen').offsetHeight + $('diag').offsetHeight; }
+
 function row(name, ok, detail) {
 	qaRows.push({ name: name, ok: ok, detail: detail || '' });
 	console[ok ? 'info' : 'error']('VNS QA', ok ? 'PASS' : 'FAIL', name, detail || '');
@@ -297,6 +341,12 @@ function row(name, ok, detail) {
 function paintQA() {
 	$('qa').innerHTML = qaRows.map((r) => '<div class="' + (r.ok ? 'pass' : 'fail') + '">' + (r.ok ? '✔ ' : '✘ ') + r.name
 		+ (r.detail ? '<small>' + r.detail + '</small>' : '') + '</div>').join('') || '<div class="idle">QA: press q or click here</div>';
+	if (window.VNS) {
+		// Update the height baseline now. Waiting for diag() to notice this
+		// asynchronous panel change lets it re-measure in the middle of a probe.
+		panelH = panelHeight();
+		VNS.refresh();
+	}
 }
 
 function tfNum(t, axis) {
@@ -305,27 +355,37 @@ function tfNum(t, axis) {
 }
 
 async function qaReversibility() {
-	const w = wagonList();
+	let w = wagonList();
 	if (!w) return row('reversibility', false, 'engine off or no wagons');
-	const max = maxX(), ys = [], fwd = [], back = [];
+	const max = maxX(), ys = [], fwd = [], back = [], at = [];
 	for (let i = 0; i < 10; i++) ys.push(Math.round(max * i / 9));
-	for (const y of ys) { await settle(y); fwd.push(w.els.map((el) => el.style.transform)); }
-	for (let i = ys.length - 1; i >= 0; i--) { await settle(ys[i]); back.push(w.els.map((el) => el.style.transform)); }
-	let bad = 0;
+	for (const y of ys) { await settle(y); w = curWagons(w); fwd.push(w.els.map((el) => el.style.transform)); at.push(window.scrollY); }
+	for (let i = ys.length - 1; i >= 0; i--) { await settle(ys[i]); w = curWagons(w); back.push(w.els.map((el) => el.style.transform)); at.push(window.scrollY); }
+	let bad = 0, drift = 0;
 	for (let i = 0; i < 10; i++) {
 		const a = fwd[i], b = back[9 - i];
+		drift = Math.max(drift, Math.abs(at[i] - ys[i]), Math.abs(at[19 - i] - ys[i]));
 		for (let k = 0; k < a.length; k++) if (a[k] !== b[k] && (tfNum(a[k], 1) !== tfNum(b[k], 1) || tfNum(a[k], 0) !== tfNum(b[k], 0))) bad++;
 	}
-	row('reversibility · 10 positions down then up', bad === 0, bad ? bad + ' differ' : 'identical transforms both ways');
+	// The scroll request itself must land where it was sent, or the two passes
+	// did not even test the same positions. 1px tolerance: scrollTo snaps to
+	// device pixels, so a zoomed viewport lands a fraction of a CSS px off
+	// with nothing moving. Real drift means the page moved under the probe —
+	// scroll anchoring after a layout shift, or another writer of scrollY.
+	const shaky = drift > 1;
+	row('reversibility · 10 positions down then up', bad === 0 && !shaky,
+		(bad ? bad + ' differ' : 'identical transforms both ways')
+		+ (shaky ? ' · scroll request landed ' + drift.toFixed(1) + 'px off — the page moved under the probe (scroll anchoring or concurrent scrolling)' : ''));
 }
 
 async function qaOverlap() {
-	const w = wagonList();
+	let w = wagonList();
 	if (!w) return row('no overlap', false, 'engine off');
 	const max = maxX();
 	let bad = 0, n = 0, worst = 0;
 	for (let i = 0; i < 10; i++) {
 		await settle(Math.round(max * i / 9));
+		w = curWagons(w);
 		for (let k = 0; k + 1 < w.n; k++) {
 			if (w.dir[k] !== 0) continue;                     // lateral and bottom exits are exempt
 			n++;
@@ -338,42 +398,53 @@ async function qaOverlap() {
 }
 
 async function qaAnchor() {
-	const w = wagonList();
-	if (!w) return row('anchor alignment', false, 'engine off');
-	const max = maxX();
+	const w0 = wagonList();
+	if (!w0) return row('anchor alignment', false, 'engine off');
 	let tested = 0, bad = 0, skipped = 0, worst = 0;
-	for (let i = 0; i < w.n; i++) {
+	for (let i = 0; i < w0.n; i++) {
+		const w = wagonList() || w0;
+		const max = maxX();
 		const gapNext = i + 1 < w.n ? w.y[i + 1] - w.y[i] : 1e9;
 		if (gapNext < w.ext[i]) { skipped++; continue; }    // coupled train: contact before parking
-		if (w.y[i] > max) { skipped++; continue; }           // document too short to park
-		await settle(Math.max(0, w.y[i] - 300));
+		if (w.y[i] > max) { skipped++; continue; }          // document too short to park
+		// Targets derive from anchor Y, so both re-target if a re-measure lands
+		// mid-check (see settleWhere).
+		let rec = await settleWhere((r) => Math.max(0, Math.round(r.y[i] - 300)), w);
 		tested++;
-		worst = Math.max(worst, Math.abs(w.pos[i] - 300));
-		await settle(w.y[i]);
-		if (Math.abs(w.pos[i]) > 1 || !w.parked[i]) bad++;
+		worst = Math.max(worst, Math.abs(rec.pos[i] - 300));
+		// ceil so free <= 0 even when the marker Y is a fraction of a pixel —
+		// scrollTo snaps to integers, and parked is pos===0 && free<=0.
+		rec = await settleWhere((r) => Math.min(maxX(), Math.ceil(r.y[i])), w);
+		if (Math.abs(rec.pos[i]) > 1) bad++;
 	}
 	row('anchor alignment · riding y==300, parked y==0', tested > 0 && bad === 0 && worst <= 1,
 		tested + ' tested, ' + skipped + ' skipped, worst riding error ' + worst.toFixed(2) + 'px');
 }
 
-// Legal motion per frame is either exactly the scroll delta (riding) or exactly
-// zero (parked). Anything in between is a jump, a stall or a crawl.
+// Legal motion while scrolling down: ride 1:1 (Δ = -step), stick (Δ = 0), or
+// the single transition frame between them (Δ in (-step, 0)) when a wagon
+// parks or starts being pushed. Anything outside that is a jump.
 async function qaJump() {
-	const w = wagonList();
-	if (!w) return row('frame jump', false, 'engine off');
+	const w0 = wagonList();
+	if (!w0) return row('frame jump', false, 'engine off');
 	const end = maxX(), step = 8;
 	await settle(0);
-	let worst = 0, frames = 0;
-	const prevPos = new Float64Array(w.n);
+	let w = curWagons(w0), worst = 0, frames = 0;
+	let prevPos = new Float64Array(w.n);
 	for (let i = 0; i < w.n; i++) prevPos[i] = w.pos[i];
 	for (let y = step; y <= end; y += step) {
 		window.scrollTo(0, y);
 		VNS.step();
+		w = curWagons(w);
+		if (prevPos.length !== w.n) {                     // a re-measure changed the fleet
+			prevPos = new Float64Array(w.n);
+			for (let i = 0; i < w.n; i++) prevPos[i] = w.pos[i];
+		}
 		frames++;
 		for (let i = 0; i < w.n; i++) {
 			if (w.dir[i] !== 0) continue;
 			const d = w.pos[i] - prevPos[i];
-			const dev = Math.min(Math.abs(d + step), Math.abs(d));
+			const dev = d > 0 ? d : Math.max(0, -d - step);
 			if (dev > worst) worst = dev;
 			prevPos[i] = w.pos[i];
 		}
@@ -382,17 +453,26 @@ async function qaJump() {
 }
 
 async function qaEvents() {
-	if (!window.VNS || !VNS.options.events) return row('script events', false, 'events off (?events=0)');
+	if (!window.VNS || !VNS.booted || !VNS.options.events) return row('script events', false, 'events off (?events=0)');
 	const chapters = cfg.preset === 'draft' ? 1 : cfg.n;
+	// Independent of earlier probes: re-latch as if the page had just loaded at top.
 	await settle(0);
+	VNS.refresh();
+	VNS.step();
 	VNS.stats.fires.fill(0);
 	const max = maxX(), stepPx = Math.max(12, innerHeight >> 4);
-	for (let y = 0; y <= max; y += stepPx) await settle(y);
+	for (let y = 0; y < max; y += stepPx) await settle(y);
+	await settle(max);
 	// The first chapter is usually already on screen at s=0, so its view/center
 	// latches are pre-consumed by the no-burst-on-load policy: allow one short.
 	const f = VNS.stats.fires.slice();
 	row('slow pass · view/center/end fire, no skip', f[0] >= Math.max(1, chapters - 1) && f[3] >= chapters && f[4] === 0, f.join('/'));
 	if (wagonList()) row('slow pass · parked fires', f[2] > 0, 'parked ' + f[2]);
+	// Flick from a fresh top — after a slow pass every latch is already consumed,
+	// so skip would never appear.
+	await settle(0);
+	VNS.refresh();
+	VNS.step();
 	VNS.stats.fires.fill(0);
 	window.scrollTo(0, max);
 	VNS.step();
@@ -417,17 +497,43 @@ async function qaEvents() {
 	await settle(0);
 }
 
+function setQARunning(on) {
+	qaRunning = on ? 1 : 0;
+	const b = $('qaBtn');
+	const a = $('auto');
+	if (b) {
+		b.disabled = !!on;
+		b.textContent = on ? 'QA running…' : 'QA all (q)';
+		b.setAttribute('aria-busy', on ? 'true' : 'false');
+	}
+	if (a) a.disabled = !!on;
+}
+
 async function qaAll() {
-	qaRows = [];
-	paintQA();
-	await qaReversibility();
-	await qaOverlap();
-	await qaAnchor();
-	await qaJump();
-	await qaEvents();
-	const bad = qaRows.filter((r) => !r.ok).length;
-	console.info('VNS QA ' + (qaRows.length - bad) + '/' + qaRows.length + ' pass');
-	await settle(0);
+	// Probes are async and all share scrollY, event latches and qaRows. A second
+	// launch would race the first run and make both reports meaningless.
+	if (qaRunning) return;
+	// Stop before locking the controls: toggleAuto is deliberately inert while
+	// QA owns the scroll position.
+	if ($('auto').dataset.on === '1') toggleAuto();
+	setQARunning(1);
+	try {
+		// Materialize the fixed-height diagnostic text before sampling. Otherwise
+		// its first 10 Hz tick can move an in-flow panel during reversibility.
+		diag();
+		qaRows = [];
+		paintQA();
+		await qaReversibility();
+		await qaOverlap();
+		await qaAnchor();
+		await qaJump();
+		await qaEvents();
+		const bad = qaRows.filter((r) => !r.ok).length;
+		console.info('VNS QA ' + (qaRows.length - bad) + '/' + qaRows.length + ' pass');
+		await settle(0);
+	} finally {
+		setQARunning(0);
+	}
 }
 
 // -------------------------------------------------------------- interaction
@@ -441,6 +547,7 @@ function autoStep() {
 }
 
 function toggleAuto() {
+	if (qaRunning) return;
 	const on = $('auto').dataset.on !== '1';
 	$('auto').dataset.on = on ? '1' : '0';
 	$('auto').textContent = on ? 'stop' : 'autoscroll';
@@ -471,13 +578,18 @@ function syncForm() {
 }
 
 function applyForm() {
+	const prevPreset = cfg.preset;
 	for (const id of IDS) {
 		const el = $(id);
 		if (!el) continue;
 		if (el.type === 'checkbox') cfg[id] = el.checked ? 1 : 0;
 		else cfg[id] = NUMERIC[id] ? +el.value : el.value;
 	}
-	if (PRESETS[cfg.preset]) cfg = Object.assign({}, PRESETS[cfg.preset], { preset: cfg.preset, wire: cfg.wire, nonce: cfg.nonce });
+	// A named preset is a starting point. Re-explode it only when the preset
+	// itself changes — otherwise data-dir=right (and every other override) is
+	// silently wiped on regen.
+	if (PRESETS[cfg.preset] && cfg.preset !== prevPreset)
+		cfg = Object.assign({}, PRESETS[cfg.preset], { preset: cfg.preset, wire: cfg.wire, nonce: cfg.nonce });
 	syncForm();
 	writeHash();
 }

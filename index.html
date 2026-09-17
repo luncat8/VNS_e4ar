@@ -29,13 +29,17 @@
 	<fieldset>
 		<legend>wagons</legend>
 		<label class="rowf">mode
-			<select id="mode"><option>mixed</option><option>cover</option><option>contain</option><option>fixed</option><option>auto</option></select>
+			<select id="mode"><option>mixed</option><option>cover</option><option>tiled</option><option>contain</option><option>fixed</option><option>auto</option></select>
 		</label>
 		<label class="rowf">size
 			<select id="size"><option>mixed</option><option>256</option><option>512</option><option>1024</option></select>
 		</label>
 		<label class="rowf">data-dir
-			<select id="dir"><option value="none">none</option><option value="mixed">mixed</option></select>
+			<select id="dir">
+				<option value="none">none (top)</option><option value="mixed">mixed</option>
+				<option value="top">top</option><option value="left">left</option>
+				<option value="right">right</option><option value="bottom">bottom</option>
+			</select>
 		</label>
 		<label class="rowf">nesting
 			<select id="nest"><option>both</option><option>section</option><option>flat</option></select>

@@ -139,7 +139,9 @@ async function t02_chain() {
 	eq('one px later it is pushed by exactly that', w.pos[1], -1);
 	eq('no overlap: bottom touches next top', w.pos[1] + w.ext[1], w.pos[2]);
 	eq('the chain pushes transitively', w.pos[0], -101);
-	ok('lateral wagon parks on Y and exits on X', /translate3d\(\s*-1px,\s*0px/.test(w.els[1].style.transform), w.els[1].style.transform);
+	const lat = /translate3d\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px/.exec(w.els[1].style.transform);
+	ok('lateral wagon parks on Y and exits on X', lat && +lat[1] < 0 && +lat[2] === 0, w.els[1].style.transform);
+	eq('lateral 1px push is scaled by vw/ext', lat ? +lat[1] : 0, -8);
 	eq('vertical wagon rides 1:1 at the same scroll', w.pos[2], w.ext[1] - 1, 0);
 	// the last wagon is never pushed: it parks and holds
 	at(c, maxScroll(c.doc));

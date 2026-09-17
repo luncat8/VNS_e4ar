@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "css-tree": "^3.2.1",
+    "jsdom": "^30.0.1",
+    "saxes": "^6.0.0"
+  }
+}
